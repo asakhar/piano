@@ -34,13 +34,13 @@ pub mod fft;
 pub mod lerp;
 pub mod waves;
 
-use plotters::prelude::*;
+use plotters::{prelude::*, backend::BGRXPixel};
 struct WindowBackend(Arc<UnsafeCell<WindowBackendInner>>);
 struct WindowBackendInner {
   hwnd: HWND,
   size: (u32, u32),
   isize: (i32, i32),
-  bm_buffer: Vec<[u8; 4]>,
+  bm_buffer: Vec<u8>,
   bm_info: BITMAPINFO,
   msg: MSG,
   sound_key_vks: Vec<i32>,
@@ -66,19 +66,14 @@ impl WindowBackend {
   }
 }
 impl std::error::Error for DrawingError {}
-impl DrawingBackend for WindowBackend {
-  type ErrorType = DrawingError;
 
-  fn get_size(&self) -> (u32, u32) {
-    let size = self.inner().size;
-    (size.0 - 1, size.1 - 1)
+impl WindowBackend {
+  pub fn get_backend(&self) -> BitMapBackend<BGRXPixel> {
+    let inner = unsafe {&mut *self.0.get()};
+    let size = inner.size;
+    BitMapBackend::with_buffer_and_format(inner.bm_buffer.as_mut_slice(), size).unwrap()
   }
-
-  fn ensure_prepared(&mut self) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
-    Ok(())
-  }
-
-  fn present(&mut self) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+  pub fn present(&mut self) {
     let inner = self.inner_mut();
     unsafe {
       let device_context: HDC = GetDC(inner.hwnd);
@@ -92,37 +87,57 @@ impl DrawingBackend for WindowBackend {
       inner.draw(device_context, client_rect);
       ReleaseDC(inner.hwnd, device_context);
     }
-    Ok(())
-  }
-
-  fn draw_pixel(
-    &mut self,
-    point: BackendCoord,
-    color: BackendColor,
-  ) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
-    let inner = self.inner_mut();
-    let index = (point.0.clamp(0, inner.isize.0 - 1)
-      + point.1.clamp(0, inner.isize.1 - 1) * inner.isize.0) as usize;
-    let Some(px) = inner.bm_buffer.get_mut(index) else {
-      return Ok(());
-    };
-    let BackendColor {
-      alpha,
-      rgb: (r, g, b),
-    } = color;
-    let a = (alpha.clamp(0.0, 1.0) * 255.0) as u8;
-    *px = [b, g, r, a];
-    Ok(())
-  }
-  fn blit_bitmap(
-          &mut self,
-          pos: BackendCoord,
-          (iw, ih): (u32, u32),
-          src: &[u8],
-      ) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
-      Ok(())
   }
 }
+// impl DrawingBackend for WindowBackend {
+//   type ErrorType = DrawingError;
+
+//   fn get_size(&self) -> (u32, u32) {
+//     let size = self.inner().size;
+//     (size.0 - 1, size.1 - 1)
+//   }
+
+//   fn ensure_prepared(&mut self) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+//     Ok(())
+//   }
+
+//   fn present(&mut self) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+//     let inner = self.inner_mut();
+//     unsafe {
+//       let device_context: HDC = GetDC(inner.hwnd);
+//       let mut client_rect = RECT {
+//         left: 0,
+//         top: 0,
+//         right: 0,
+//         bottom: 0,
+//       };
+//       GetClientRect(inner.hwnd, &mut client_rect);
+//       inner.draw(device_context, client_rect);
+//       ReleaseDC(inner.hwnd, device_context);
+//     }
+//     Ok(())
+//   }
+
+//   fn draw_pixel(
+//     &mut self,
+//     point: BackendCoord,
+//     color: BackendColor,
+//   ) -> Result<(), DrawingErrorKind<Self::ErrorType>> {
+//     let inner = self.inner_mut();
+//     let index = (point.0.clamp(0, inner.isize.0 - 1)
+//       + point.1.clamp(0, inner.isize.1 - 1) * inner.isize.0) as usize;
+//     let Some(px) = inner.bm_buffer.get_mut(index) else {
+//       return Ok(());
+//     };
+//     let BackendColor {
+//       alpha,
+//       rgb: (r, g, b),
+//     } = color;
+//     let a = (alpha.clamp(0.0, 1.0) * 255.0) as u8;
+//     *px = [b, g, r, a];
+//     Ok(())
+//   }
+// }
 impl WindowBackend {
   fn new(size: (i32, i32), control: Arc<WavesControl>) -> Self {
     Self(Arc::new(UnsafeCell::new(WindowBackendInner::new(
@@ -219,7 +234,7 @@ impl WindowBackendInner {
           rgbReserved: 0,
         }],
       },
-      bm_buffer: vec![[0; 4]; size.0 as usize * size.1 as usize],
+      bm_buffer: vec![0; size.0 as usize * size.1 as usize * 4],
       msg,
       sound_key_vks,
       sound_key_states,
@@ -256,16 +271,17 @@ impl WindowBackendInner {
 fn main() {
   const LEN: usize = 256;
   let waves = Waves::new(LEN);
-  let mut backend = WindowBackend::new((1024, 800), waves.control());
+  const SIZE: (i32, i32) = (1024, 800);
+  let mut backend = WindowBackend::new(SIZE, waves.control());
   let control = waves.control();
   let (_stream, stream_handle) = OutputStream::try_default().unwrap();
   let sink = Sink::try_new(&stream_handle).unwrap();
   let mut waves_clone = waves.shallow_clone();
   sink.append(waves);
   println!("max note: {}", control.max_note());
-  let backend_copy = backend.clone();
+  let mut backend_copy = backend.clone();
 
-  let root = backend_copy.into_drawing_area();
+  let root = backend_copy.get_backend().into_drawing_area();
 
   let space = (0..LEN).map(|i| i as f32);
 
@@ -309,6 +325,7 @@ fn main() {
       .draw()
       .unwrap();
     root.present().expect("Unable to write result to file, please make sure 'plotters-doc-data' dir exists under current dir");
+    backend.present();
   }
 }
 #[test]
