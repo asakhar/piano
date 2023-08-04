@@ -18,3 +18,4 @@ plotters = "0.3.5"
 num = "0.4.1"
 plotters-backend = "0.3.5"
 cutils = { git = "https://github.com/asakhar/cutils" }
+rustfft = "6.1.0"

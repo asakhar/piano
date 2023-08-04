@@ -1,6 +1,7 @@
-use crate::fft::ifft;
+use crate::lerp::{inv_lerp, lerp};
 use num::Complex;
 use rodio::Source;
+use rustfft::Fft;
 use std::{
   cell::UnsafeCell,
   sync::{
@@ -52,8 +53,15 @@ impl NoteState {
           adsr.sustain_level,
         ),
       ),
-      Decay(_) => (Sustain(adsr.sustain_dur), adsr.sustain_level),
-      Sustain(t) if t > 0.0 && sustain => (Sustain(t - dt), adsr.sustain_level),
+      Decay(_) => (
+        Sustain(if sustain {
+          adsr.sustain_dur
+        } else {
+          adsr.sustain_dur / 4.0
+        }),
+        adsr.sustain_level,
+      ),
+      Sustain(t) if t > 0.0 => (Sustain(t - dt), adsr.sustain_level),
       Sustain(_) => (Release(adsr.release_dur), adsr.sustain_level),
       Release(t) if t > 0.0 => (
         Release(t - dt),
@@ -98,16 +106,16 @@ impl WavesControl {
   pub fn hit(&self, note: usize) {
     let ss = unsafe { &mut *self.ss.get() };
     use NoteState::*;
-    let f = 2.0f32.powf(note as f32 / 12.0)  * 16.35;
-    println!("hit freq: {f}");
-    let index = f as usize;
-    println!("hit index: {index}");
+    let f = 2.0f32.powf(note as f32 / 12.0) * 16.35;
+    // println!("hit freq: {f}");
+    let index = f as usize - 16;
+    // println!("hit index: {index}");
     if index < ss.len() {
-      match ss[index + 1] {
-        Silent => ss[index + 1] = Attack(self.adsr.attack_dur),
-        Release(_) => ss[index + 1] = Sustain(self.adsr.sustain_dur),
-        _ => (),
-      }
+      let note = ss[index + 1];
+      let v = note.peek(&self.adsr);
+      let v = inv_lerp(v, 0.0, self.adsr.attack_level);
+      let v = lerp(v, self.adsr.attack_dur, 0.0);
+      ss[index + 1] = Attack(v);
     }
   }
   pub fn get_state(&self, freqs: &mut [f32]) {
@@ -123,6 +131,7 @@ impl WavesControl {
   }
 }
 pub struct Waves {
+  fft: Arc<dyn Fft<f32>>,
   window: Box<[Complex<f32>]>,
   buf: Box<[Complex<f32>]>,
   wp: usize,
@@ -132,21 +141,24 @@ pub struct Waves {
 impl Waves {
   pub fn new(notes: usize) -> Self {
     let notes = notes.next_power_of_two();
+    let mut planner = rustfft::FftPlanner::<f32>::new();
+    let fft = planner.plan_fft_forward(notes);
     let buf = vec![CZERO; notes].into_boxed_slice();
     let ss = UnsafeCell::new(vec![NoteState::Silent; notes / 2 - 2].into_boxed_slice());
     let control = Arc::new(WavesControl {
       ss,
       sustain: AtomicBool::new(false),
       adsr: AdsrParams {
-        attack_level: 0.9,
-        sustain_level: 0.7,
-        attack_dur: 0.06,
+        attack_level: 0.5,
+        sustain_level: 0.3,
+        attack_dur: 0.1,
         decay_dur: 0.04,
-        release_dur: 0.2,
-        sustain_dur: 0.3,
+        release_dur: 0.15,
+        sustain_dur: 0.2,
       },
     });
     Self {
+      fft,
       window: buf.clone(),
       buf,
       wp: 0,
@@ -156,10 +168,11 @@ impl Waves {
   pub fn shallow_clone(&self) -> Self {
     let buf = vec![CZERO; self.buf.len()].into_boxed_slice();
     Self {
-        window: buf.clone(),
-        buf,
-        wp: 0,
-        control: self.control(),
+      fft: Arc::clone(&self.fft),
+      window: buf.clone(),
+      buf,
+      wp: 0,
+      control: self.control(),
     }
   }
   pub fn control(&self) -> Arc<WavesControl> {
@@ -173,17 +186,26 @@ impl Iterator for Waves {
   fn next(&mut self) -> Option<Self::Item> {
     if self.wp == self.window.len() {
       let ss = unsafe { &mut *self.control.ss.get() };
-      let dt = 1.0 / self.window.len() as f32;
+      let dt = 1.0 / self.window.len() as f32 * 16.0 * 2.0;
       let sustain = self.control.sustain.load(Ordering::Relaxed);
       let n = self.buf.len();
-      self.buf.fill(CZERO);
+      self.window.fill(CZERO);
+      let mut fsum = 0.0;
       for (i, b) in ss.iter_mut().enumerate() {
         let s = b.next(&self.control.adsr, dt, sustain);
-        let v = Complex::new(s, 0f32);
-        self.buf[i + 1] = v;
-        self.buf[n - i - 1] = v;
+        fsum += s;
+        let v = Complex::new(0f32, s);
+        self.window[i + 1] = -v;
+        self.window[n - i - 1] = v;
       }
-      ifft(&mut self.buf, &mut self.window);
+      if fsum > 1.0 {
+        for i in 1..n / 2 {
+          self.window[i + 1] /= fsum;
+          self.window[n - i - 1] /= fsum;
+        }
+      }
+      self.fft.process_with_scratch(&mut self.window, &mut self.buf);
+
       self.wp = 0;
     }
     let v = self.window[self.wp].re;
@@ -201,9 +223,8 @@ impl Source for Waves {
   }
 
   fn sample_rate(&self) -> u32 {
-    4000
     // 44100
-    // self.window.len() as u32
+    self.window.len() as u32 * 16
   }
 
   fn total_duration(&self) -> Option<std::time::Duration> {

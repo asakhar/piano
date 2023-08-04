@@ -62,6 +62,7 @@ pub fn fft(input: &mut [num::Complex<f32>], output: &mut [num::Complex<f32>]) {
 
 pub fn ifft(input: &mut [num::Complex<f32>], output: &mut [num::Complex<f32>]) {
   debug_assert!(input.len().is_power_of_two());
+  debug_assert_eq!(input.len(), output.len());
   fn ifft_inner(
     buf_a: &mut [num::Complex<f32>],
     buf_b: &mut [num::Complex<f32>],
