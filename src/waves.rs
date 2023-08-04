@@ -193,6 +193,7 @@ impl Iterator for Waves {
       let mut fsum = 0.0;
       for (i, b) in ss.iter_mut().enumerate() {
         let s = b.next(&self.control.adsr, dt, sustain);
+        let s = s / (i as f32 + 1.0) * 5.0;
         fsum += s;
         let v = Complex::new(0f32, s);
         self.window[i + 1] = -v;
