@@ -10,6 +10,10 @@ pub fn lerp(t: f32, min: f32, max: f32) -> f32 {
 pub fn lerp_as(t: f32, tmin: f32, tmax: f32, min: f32, max: f32) -> f32 {
   lerp(inv_lerp(t, tmin, tmax), min, max)
 }
+#[inline(always)]
+pub fn quadratic_interpolate_as(t: f32, tmin: f32, tmax: f32, min: f32, max: f32) -> f32 {
+  lerp(inv_lerp(t, tmin, tmax).powi(2), min, max)
+}
 
 #[test]
 fn test_lerp_as() {

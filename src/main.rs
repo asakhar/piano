@@ -10,7 +10,7 @@ pub mod waves;
 pub mod windows;
 
 fn main() {
-  const LEN: usize = 2700;
+  const LEN: usize = 4096;
   let mut waves = Waves::new(LEN);
   const SIZE: (u32, u32) = (1920, 1080);
   let backend = WindowBackend::new(SIZE, waves.control());

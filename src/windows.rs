@@ -22,8 +22,8 @@ use winapi::{
     winuser::{
       CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetDC, LoadCursorW,
       PeekMessageW, PostQuitMessage, RegisterClassExW, ReleaseDC, ShowWindow, CS_DBLCLKS,
-      CS_HREDRAW, CS_VREDRAW, IDC_ARROW, MSG, PM_REMOVE, SW_SHOW, VK_OEM_4, VK_OEM_6, WM_DESTROY,
-      WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+      CS_HREDRAW, CS_VREDRAW, IDC_ARROW, MSG, PM_REMOVE, VK_OEM_4, VK_OEM_6, WM_DESTROY,
+      WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSEXW, WS_OVERLAPPEDWINDOW, SW_SHOWMAXIMIZED,
     },
   },
 };
@@ -294,8 +294,7 @@ fn create_window(size: (i32, i32)) -> HWND {
     if hwnd == std::ptr::null_mut() {
       panic!("CreateWindowEx failed");
     }
-
-    ShowWindow(hwnd, SW_SHOW);
+    ShowWindow(hwnd, SW_SHOWMAXIMIZED);
     hwnd
   }
 }

@@ -1,4 +1,4 @@
-use crate::lerp::{inv_lerp, lerp};
+use crate::lerp::{inv_lerp, lerp, quadratic_interpolate_as};
 use num::Complex;
 use rodio::Source;
 use rustfft::Fft;
@@ -35,12 +35,13 @@ impl NoteState {
   #[inline(always)]
   pub fn next(&mut self, adsr: &AdsrParams, dt: f32, sustain: bool) -> f32 {
     use NoteState::*;
-    let val;
-    (*self, val) = match *self {
+    // let val;
+    // let next;
+    let (next, val) = match *self {
       Silent => (Silent, 0.0),
       Attack(t) if t > 0.0 => (
         Attack(t - dt),
-        lerp_as(t, adsr.attack_dur, 0.0, 0.0, adsr.attack_level),
+        quadratic_interpolate_as(t, adsr.attack_dur, 0.0, 0.0, adsr.attack_level),
       ),
       Attack(_) => (Decay(adsr.decay_dur), adsr.attack_level),
       Decay(t) if t > 0.0 => (
@@ -69,6 +70,9 @@ impl NoteState {
       ),
       Release(_) => (Silent, 0.0),
     };
+    let self_ptr = self as *mut Self as *mut u64;
+    let next_ptr = &next as *const Self as *const u64;
+    unsafe { self_ptr.write_volatile(*next_ptr) };
     val
   }
   #[inline(always)]
@@ -140,18 +144,17 @@ pub struct Waves {
 
 impl Waves {
   pub fn new(notes: usize) -> Self {
-    let notes = notes.next_power_of_two();
     let mut planner = rustfft::FftPlanner::<f32>::new();
-    let fft = planner.plan_fft_forward(notes);
+    let fft = planner.plan_fft_inverse(notes);
     let buf = vec![CZERO; notes].into_boxed_slice();
     let ss = UnsafeCell::new(vec![NoteState::Silent; notes / 2 - 2].into_boxed_slice());
     let control = Arc::new(WavesControl {
       ss,
       sustain: AtomicBool::new(false),
       adsr: AdsrParams {
-        attack_level: 0.5,
+        attack_level: 0.4,
         sustain_level: 0.3,
-        attack_dur: 0.1,
+        attack_dur: 0.2,
         decay_dur: 0.04,
         release_dur: 0.15,
         sustain_dur: 0.2,
