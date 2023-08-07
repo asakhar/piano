@@ -10,7 +10,7 @@ pub mod waves;
 pub mod windows;
 
 fn main() {
-  const LEN: usize = 4096;
+  const LEN: usize = 44100;
   let mut waves = Waves::new(LEN);
   const SIZE: (u32, u32) = (1920, 1080);
   let backend = WindowBackend::new(SIZE, waves.control());
@@ -32,7 +32,7 @@ fn main() {
     if !updater.update() {
       return;
     }
-    buf.fill_with(|| waves.next().unwrap());
+    buf.fill_with(|| waves.peek().unwrap());
     control.get_state(&mut freq);
     root.fill(&WHITE).unwrap();
     let mut chart = ChartBuilder::on(&root)

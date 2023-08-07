@@ -183,13 +183,45 @@ impl Waves {
   }
 }
 
+
+impl Waves {
+  pub fn peek(&mut self) -> Option<f32> {
+    if self.wp == self.window.len() {
+      let ss = unsafe { &mut *self.control.ss.get() };
+      let n = self.buf.len();
+      self.window.fill(CZERO);
+      let mut fsum = 0.0;
+      for (i, b) in ss.iter_mut().enumerate() {
+        let s = b.peek(&self.control.adsr);
+        let s = s / (i as f32 + 1.0) * 5.0;
+        fsum += s;
+        let v = Complex::new(0f32, s);
+        self.window[i + 1] = -v;
+        self.window[n - i - 1] = v;
+      }
+      if fsum > 1.0 {
+        for i in 1..n / 2 {
+          self.window[i + 1] /= fsum;
+          self.window[n - i - 1] /= fsum;
+        }
+      }
+      self.fft.process_with_scratch(&mut self.window, &mut self.buf);
+
+      self.wp = 0;
+    }
+    let v = self.window[self.wp].re;
+    self.wp += 1;
+    Some(v)
+  }
+}
+
 impl Iterator for Waves {
   type Item = f32;
 
   fn next(&mut self) -> Option<Self::Item> {
     if self.wp == self.window.len() {
       let ss = unsafe { &mut *self.control.ss.get() };
-      let dt = 1.0 / self.window.len() as f32 * 16.0 * 2.0;
+      let dt = 1.0 / 16.0;
       let sustain = self.control.sustain.load(Ordering::Relaxed);
       let n = self.buf.len();
       self.window.fill(CZERO);
