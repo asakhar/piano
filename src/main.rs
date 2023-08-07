@@ -4,8 +4,11 @@ use plotters::{
 };
 use rodio::{OutputStream, Sink};
 
-use crate::waves::Waves;
 use crate::windows::WindowBackend;
+use crate::{
+  ui::{SawIcon, SineIcon, SquareIcon, TriangleIcon},
+  waves::{NoteMode, Waves},
+};
 
 // pub mod fft;
 pub mod lerp;
@@ -33,7 +36,11 @@ fn main() {
 
   let mut buf = [0f32; LEN];
   let mut freq = [0f32; LEN / 2 - 2];
-  // let box_style = ShapeStyle{ color: RED.into(), filled: false, stroke_width: 2 };
+  let mut box_style = ShapeStyle {
+    color: RED.into(),
+    filled: false,
+    stroke_width: 2,
+  };
   loop {
     if !updater.update() {
       return;
@@ -42,7 +49,36 @@ fn main() {
     control.get_state(&mut freq);
     root.fill(&WHITE).unwrap();
     // let mouse = updater.1.mouse;
-    // root.draw(&RoundedRect::new([(5, 5), (mouse.x, mouse.y)], 50, box_style)).unwrap();
+    let mode = unsafe { *control.mode.get() };
+    box_style.color = if mode == NoteMode::Sine {
+      GREEN.into()
+    } else {
+      RED.into()
+    };
+    root.draw(&SineIcon::new((5, 5), 50, box_style)).unwrap();
+    box_style.color = if mode == NoteMode::Saw {
+      GREEN.into()
+    } else {
+      RED.into()
+    };
+    root.draw(&SawIcon::new((60, 5), 50, box_style)).unwrap();
+    box_style.color = if mode == NoteMode::Square {
+      GREEN.into()
+    } else {
+      RED.into()
+    };
+    root
+      .draw(&SquareIcon::new((115, 5), 50, box_style))
+      .unwrap();
+    box_style.color = if mode == NoteMode::Triangle {
+      GREEN.into()
+    } else {
+      RED.into()
+    };
+    root
+      .draw(&TriangleIcon::new((170, 5), 50, box_style))
+      .unwrap();
+    // 5 60 115 170
     let mut chart = ChartBuilder::on(&root)
       .x_label_area_size(35)
       .y_label_area_size(40)

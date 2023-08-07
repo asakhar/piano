@@ -59,9 +59,9 @@ impl<Coord, DB: DrawingBackend> Drawable<DB> for RoundedRect<Coord> {
         backend.draw_line(arb, brb, &self.style)?;
         backend.draw_line(aar, abr, &self.style)?;
         backend.draw_line(bar, bbr, &self.style)?;
-        let aa = (ara.0, aar.1);
+        let aa = (ara.0 + 1, aar.1);
         let ba = (bra.0, aar.1);
-        let ab = (ara.0, abr.1);
+        let ab = (ara.0 + 1, abr.1);
         let bb = (bra.0, abr.1);
 
         draw_arc(backend, self.segments, aa, self.radius, 2, &self.style)?;
@@ -72,6 +72,237 @@ impl<Coord, DB: DrawingBackend> Drawable<DB> for RoundedRect<Coord> {
       }
       _ => Ok(()),
     }
+  }
+}
+
+pub struct SawIcon<Coord> {
+  pub pos: [Coord; 1],
+  pub size: i32,
+  pub style: ShapeStyle,
+}
+impl<Coord> SawIcon<Coord> {
+  pub fn new(pos: Coord, size: u32, style: impl Into<ShapeStyle>) -> Self {
+    Self {
+      pos: [pos],
+      size: size as i32,
+      style: style.into(),
+    }
+  }
+}
+
+impl<'a, Coord> PointCollection<'a, Coord> for &'a SawIcon<Coord> {
+  type Point = &'a Coord;
+  type IntoIter = &'a [Coord];
+  fn point_iter(self) -> &'a [Coord] {
+    &self.pos
+  }
+}
+
+impl<Coord, DB: DrawingBackend> Drawable<DB> for SawIcon<Coord> {
+  fn draw<I: Iterator<Item = BackendCoord>>(
+    &self,
+    mut points: I,
+    backend: &mut DB,
+    pd: (u32, u32),
+  ) -> Result<(), DrawingErrorKind<DB::ErrorType>> {
+    let Some(lt) = points.next() else {
+      return Ok(());
+    };
+    let bbox = RoundedRect::new([lt, (lt.0 + self.size, lt.1 + self.size)], 5, self.style);
+    bbox.draw(bbox.point_iter().iter().copied(), backend, pd)?;
+    backend.draw_line(
+      (lt.0 + self.size / 10, lt.1 + self.size / 10),
+      (lt.0 + self.size / 10, lt.1 + 9 * self.size / 10),
+      &self.style,
+    )?;
+    backend.draw_line(
+      (lt.0 + self.size / 10, lt.1 + self.size / 10),
+      (lt.0 + 5 * self.size / 10, lt.1 + 9 * self.size / 10),
+      &self.style,
+    )?;
+    backend.draw_line(
+      (lt.0 + 5 * self.size / 10, lt.1 + self.size / 10),
+      (lt.0 + 5 * self.size / 10, lt.1 + 9 * self.size / 10),
+      &self.style,
+    )?;
+    backend.draw_line(
+      (lt.0 + 5 * self.size / 10, lt.1 + self.size / 10),
+      (lt.0 + 9 * self.size / 10, lt.1 + 9 * self.size / 10),
+      &self.style,
+    )?;
+    Ok(())
+  }
+}
+
+pub struct TriangleIcon<Coord> {
+  pub pos: [Coord; 1],
+  pub size: i32,
+  pub style: ShapeStyle,
+}
+impl<Coord> TriangleIcon<Coord> {
+  pub fn new(pos: Coord, size: u32, style: impl Into<ShapeStyle>) -> Self {
+    Self {
+      pos: [pos],
+      size: size as i32,
+      style: style.into(),
+    }
+  }
+}
+
+impl<'a, Coord> PointCollection<'a, Coord> for &'a TriangleIcon<Coord> {
+  type Point = &'a Coord;
+  type IntoIter = &'a [Coord];
+  fn point_iter(self) -> &'a [Coord] {
+    &self.pos
+  }
+}
+
+impl<Coord, DB: DrawingBackend> Drawable<DB> for TriangleIcon<Coord> {
+  fn draw<I: Iterator<Item = BackendCoord>>(
+    &self,
+    mut points: I,
+    backend: &mut DB,
+    pd: (u32, u32),
+  ) -> Result<(), DrawingErrorKind<DB::ErrorType>> {
+    let Some(lt) = points.next() else {
+      return Ok(());
+    };
+    let bbox = RoundedRect::new([lt, (lt.0 + self.size, lt.1 + self.size)], 5, self.style);
+    bbox.draw(bbox.point_iter().iter().copied(), backend, pd)?;
+    backend.draw_line(
+      (lt.0 + 3 * self.size / 10, lt.1 + self.size / 10),
+      (lt.0 + self.size / 10, lt.1 + 9 * self.size / 10),
+      &self.style,
+    )?;
+    backend.draw_line(
+      (lt.0 + 3 * self.size / 10, lt.1 + self.size / 10),
+      (lt.0 + 5 * self.size / 10, lt.1 + 9 * self.size / 10),
+      &self.style,
+    )?;
+    backend.draw_line(
+      (lt.0 + 7 * self.size / 10, lt.1 + self.size / 10),
+      (lt.0 + 5 * self.size / 10, lt.1 + 9 * self.size / 10),
+      &self.style,
+    )?;
+    backend.draw_line(
+      (lt.0 + 7 * self.size / 10, lt.1 + self.size / 10),
+      (lt.0 + 9 * self.size / 10, lt.1 + 9 * self.size / 10),
+      &self.style,
+    )?;
+    Ok(())
+  }
+}
+
+pub struct SquareIcon<Coord> {
+  pub pos: [Coord; 1],
+  pub size: i32,
+  pub style: ShapeStyle,
+}
+impl<Coord> SquareIcon<Coord> {
+  pub fn new(pos: Coord, size: u32, style: impl Into<ShapeStyle>) -> Self {
+    Self {
+      pos: [pos],
+      size: size as i32,
+      style: style.into(),
+    }
+  }
+}
+
+impl<'a, Coord> PointCollection<'a, Coord> for &'a SquareIcon<Coord> {
+  type Point = &'a Coord;
+  type IntoIter = &'a [Coord];
+  fn point_iter(self) -> &'a [Coord] {
+    &self.pos
+  }
+}
+
+impl<Coord, DB: DrawingBackend> Drawable<DB> for SquareIcon<Coord> {
+  fn draw<I: Iterator<Item = BackendCoord>>(
+    &self,
+    mut points: I,
+    backend: &mut DB,
+    pd: (u32, u32),
+  ) -> Result<(), DrawingErrorKind<DB::ErrorType>> {
+    let Some(lt) = points.next() else {
+      return Ok(());
+    };
+    let bbox = RoundedRect::new([lt, (lt.0 + self.size, lt.1 + self.size)], 5, self.style);
+    bbox.draw(bbox.point_iter().iter().copied(), backend, pd)?;
+    backend.draw_line(
+      (lt.0 + 5 * self.size / 10, lt.1 + 9 * self.size / 10),
+      (lt.0 + self.size / 10, lt.1 + 9 * self.size / 10),
+      &self.style,
+    )?;
+    backend.draw_line(
+      (lt.0 + 5 * self.size / 10, lt.1 + self.size / 10),
+      (lt.0 + 5 * self.size / 10, lt.1 + 9 * self.size / 10),
+      &self.style,
+    )?;
+    backend.draw_line(
+      (lt.0 + 5 * self.size / 10, lt.1 + self.size / 10),
+      (lt.0 + 9 * self.size / 10, lt.1 + self.size / 10),
+      &self.style,
+    )?;
+    Ok(())
+  }
+}
+
+pub struct SineIcon<Coord> {
+  pub pos: [Coord; 1],
+  pub size: i32,
+  pub style: ShapeStyle,
+}
+impl<Coord> SineIcon<Coord> {
+  pub fn new(pos: Coord, size: u32, style: impl Into<ShapeStyle>) -> Self {
+    Self {
+      pos: [pos],
+      size: size as i32,
+      style: style.into(),
+    }
+  }
+}
+
+impl<'a, Coord> PointCollection<'a, Coord> for &'a SineIcon<Coord> {
+  type Point = &'a Coord;
+  type IntoIter = &'a [Coord];
+  fn point_iter(self) -> &'a [Coord] {
+    &self.pos
+  }
+}
+
+impl<Coord, DB: DrawingBackend> Drawable<DB> for SineIcon<Coord> {
+  fn draw<I: Iterator<Item = BackendCoord>>(
+    &self,
+    mut points: I,
+    backend: &mut DB,
+    pd: (u32, u32),
+  ) -> Result<(), DrawingErrorKind<DB::ErrorType>> {
+    let Some(lt) = points.next() else {
+      return Ok(());
+    };
+    let bbox = RoundedRect::new([lt, (lt.0 + self.size, lt.1 + self.size)], 5, self.style);
+    bbox.draw(bbox.point_iter().iter().copied(), backend, pd)?;
+    let segments = 100;
+    let mut prev = 0;
+    for i in 0..segments {
+      let x = i as f32 / segments as f32 * 2.0 * std::f32::consts::PI;
+      let h = ((x.sin() + 1.0) * self.size as f32 * 0.4) as i32;
+      if i != 0 {
+        backend.draw_line(
+          (
+            i * 8 * self.size / 10 / segments + lt.0 + self.size / 10,
+            prev + lt.1 + self.size / 10,
+          ),
+          (
+            (i + 1) * 8 * self.size / 10 / segments + lt.0 + self.size / 10,
+            h + lt.1 + self.size / 10,
+          ),
+          &self.style,
+        )?;
+      }
+      prev = h;
+    }
+    Ok(())
   }
 }
 

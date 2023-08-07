@@ -24,8 +24,8 @@ use winapi::{
       PeekMessageW, PostQuitMessage, RegisterClassExW, ReleaseDC, ShowWindow, CS_DBLCLKS,
       CS_HREDRAW, CS_VREDRAW, IDC_ARROW, MK_CONTROL, MK_LBUTTON, MK_MBUTTON, MK_RBUTTON, MK_SHIFT,
       MK_XBUTTON1, MK_XBUTTON2, MSG, PM_REMOVE, SW_SHOWMAXIMIZED, VK_OEM_1, VK_OEM_4, VK_OEM_5,
-      VK_OEM_6, VK_OEM_7, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_MOUSEMOVE, WM_QUIT, WNDCLASSEXW,
-      WS_OVERLAPPEDWINDOW,
+      VK_OEM_6, VK_OEM_7, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSEXW,
+      WS_OVERLAPPEDWINDOW, WM_MOUSELAST, WM_MOUSEFIRST,
     },
   },
 };
@@ -125,14 +125,16 @@ impl WindowUpdater {
             inner.control.sustain.store(pressed, Ordering::Relaxed);
           }
           b'1' | b'2' | b'3' | b'4' => {
-            let mode = match code {
-              b'1' => NoteMode::Sine,
-              b'2' => NoteMode::Saw,
-              b'3' => NoteMode::Square,
-              b'4' => NoteMode::Triangle,
-              _ => unreachable!(),
-            };
-            unsafe { *inner.control.mode.get() = mode };
+            if pressed {
+              let mode = match code {
+                b'1' => NoteMode::Sine,
+                b'2' => NoteMode::Saw,
+                b'3' => NoteMode::Square,
+                b'4' => NoteMode::Triangle,
+                _ => unreachable!(),
+              };
+              unsafe { *inner.control.mode.get() = mode };
+            }
           }
           _ => (),
         }
@@ -275,7 +277,7 @@ pub struct MouseMoveEvent {
 }
 
 fn process_mouse(message: u32, mouse_vk: usize, mouse_xy: usize) -> Option<MouseMoveEvent> {
-  if message != WM_MOUSEMOVE {
+  if message > WM_MOUSELAST || message < WM_MOUSEFIRST {
     return None;
   }
   let x = ((mouse_xy >> 0) & 0xFFFF) as i32;
