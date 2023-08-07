@@ -1,4 +1,4 @@
-use crate::waves::WavesControl;
+use crate::waves::{NoteMode, WavesControl};
 use cutils::csizeof;
 use plotters::{backend::BGRXPixel, prelude::*};
 use std::{
@@ -22,12 +22,18 @@ use winapi::{
     winuser::{
       CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetDC, LoadCursorW,
       PeekMessageW, PostQuitMessage, RegisterClassExW, ReleaseDC, ShowWindow, CS_DBLCLKS,
-      CS_HREDRAW, CS_VREDRAW, IDC_ARROW, MSG, PM_REMOVE, VK_OEM_4, VK_OEM_6, WM_DESTROY,
-      WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSEXW, WS_OVERLAPPEDWINDOW, SW_SHOWMAXIMIZED,
+      CS_HREDRAW, CS_VREDRAW, IDC_ARROW, MK_CONTROL, MK_LBUTTON, MK_MBUTTON, MK_RBUTTON, MK_SHIFT,
+      MK_XBUTTON1, MK_XBUTTON2, MSG, PM_REMOVE, SW_SHOWMAXIMIZED, VK_OEM_1, VK_OEM_4, VK_OEM_5,
+      VK_OEM_6, VK_OEM_7, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_MOUSEMOVE, WM_QUIT, WNDCLASSEXW,
+      WS_OVERLAPPEDWINDOW,
     },
   },
 };
-pub struct WindowUpdater(WindowBackend);
+
+pub struct WindowState {
+  pub mouse: MouseMoveEvent,
+}
+pub struct WindowUpdater(WindowBackend, pub WindowState);
 pub struct WindowBackend(Arc<UnsafeCell<WindowBackendInner>>);
 struct WindowBackendInner {
   hwnd: HWND,
@@ -61,7 +67,7 @@ impl WindowBackend {
     let inner = unsafe { &mut *self.0.get() };
     let size = inner.size;
     (
-      WindowUpdater(Self(Arc::clone(&self.0))),
+      WindowUpdater(Self(Arc::clone(&self.0)), WindowState { mouse: Default::default() }),
       BitMapBackend::with_buffer_and_format(inner.bm_buffer.as_mut_slice(), size).unwrap(),
     )
   }
@@ -105,6 +111,7 @@ impl WindowUpdater {
         if pressed {
           inner.control.hit(i);
         }
+        continue;
       }
       if let Some((_, pressed)) = process_keyboard(
         inner.msg.message,
@@ -112,12 +119,28 @@ impl WindowUpdater {
         &mut inner.special_key_states,
         &inner.special_key_vks,
       ) {
-        match inner.msg.wParam as u8 {
+        let code = inner.msg.wParam as u8;
+        match code {
           b' ' => {
             inner.control.sustain.store(pressed, Ordering::Relaxed);
           }
+          b'1' | b'2' | b'3' | b'4' => {
+            let mode = match code {
+              b'1' => NoteMode::Sine,
+              b'2' => NoteMode::Saw,
+              b'3' => NoteMode::Square,
+              b'4' => NoteMode::Triangle,
+              _ => unreachable!(),
+            };
+            unsafe { *inner.control.mode.get() = mode };
+          }
           _ => (),
         }
+        continue;
+      }
+      if let Some(event) = process_mouse(inner.msg.message, inner.msg.wParam, inner.msg.lParam as usize) {
+        self.1.mouse = event;
+        println!("mouse={event:?}");
       }
     }
   }
@@ -145,12 +168,13 @@ impl WindowBackendInner {
       key_vks.extend(b"QWERTYUIOP".map(|c| c as i32));
       key_vks.extend([VK_OEM_4, VK_OEM_6]);
       key_vks.extend(b"ASDFGHJKL".map(|c| c as i32));
+      key_vks.extend([VK_OEM_1, VK_OEM_7, VK_OEM_5]);
       key_vks
     };
     let sound_key_states = vec![false; sound_key_vks.len()];
     let special_key_vks = {
       let mut key_vks = vec![];
-      key_vks.extend(b" ".map(|c| c as i32));
+      key_vks.extend(b" 1234".map(|c| c as i32));
       key_vks
     };
     let special_key_states = vec![false; special_key_vks.len()];
@@ -235,6 +259,45 @@ fn process_keyboard(
   } else {
     None
   }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MouseMoveEvent {
+  pub x: i32,
+  pub y: i32,
+  pub ctrl: bool,
+  pub left: bool,
+  pub right: bool,
+  pub middle: bool,
+  pub shift: bool,
+  pub x1: bool,
+  pub x2: bool,
+}
+
+fn process_mouse(message: u32, mouse_vk: usize, mouse_xy: usize) -> Option<MouseMoveEvent> {
+  if message != WM_MOUSEMOVE {
+    return None;
+  }
+  let x = ((mouse_xy >> 0) & 0xFFFF) as i32;
+  let y = ((mouse_xy >> 16) & 0xFFFF) as i32;
+  let ctrl = mouse_vk & MK_CONTROL != 0;
+  let left = mouse_vk & MK_LBUTTON != 0;
+  let right = mouse_vk & MK_RBUTTON != 0;
+  let middle = mouse_vk & MK_MBUTTON != 0;
+  let shift = mouse_vk & MK_SHIFT != 0;
+  let x1 = mouse_vk & MK_XBUTTON1 != 0;
+  let x2 = mouse_vk & MK_XBUTTON2 != 0;
+  Some(MouseMoveEvent {
+    x,
+    y,
+    ctrl,
+    left,
+    right,
+    middle,
+    shift,
+    x1,
+    x2,
+  })
 }
 
 fn to_wstring(s: &str) -> Vec<u16> {

@@ -97,8 +97,48 @@ impl NoteState {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum NoteMode {
+  Sine,
+  Saw,
+  Triangle,
+  Square,
+}
+
+impl NoteMode {
+  pub fn calc(self, i: usize, n: usize, hn: usize, v: Complex<f32>, window: &mut [Complex<f32>]) {
+    match self {
+      NoteMode::Sine => {
+        window[i + 1] -= v;
+        window[n - i - 1] += v;
+      }
+      NoteMode::Saw => {
+        for j in 1..hn / (i + 1) {
+          window[(i + 1) * j] -= v / (j as f32);
+          window[n - (i + 1) * j] += v / (j as f32);
+        }
+      }
+      NoteMode::Triangle => {
+        for j in (1..hn / (i + 1)).step_by(2) {
+          let other_odd = (-1f32).powi(j as i32/2);
+          window[(i + 1) * j] -= v / (j as f32).powi(2) * other_odd;
+          window[n - (i + 1) * j] += v / (j as f32).powi(2) * other_odd;
+        }
+      },
+      NoteMode::Square => {
+        for j in (1..hn / (i + 1)).step_by(2) {
+          window[(i + 1) * j] -= v / (j as f32);
+          window[n - (i + 1) * j] += v / (j as f32);
+        }
+      }
+    }
+  }
+}
+
 pub struct WavesControl {
   pub ss: UnsafeCell<Box<[NoteState]>>,
+  pub mode: UnsafeCell<NoteMode>,
   pub sustain: AtomicBool,
   pub adsr: AdsrParams,
 }
@@ -146,11 +186,13 @@ impl Waves {
   pub fn new(notes: usize) -> Self {
     let mut planner = rustfft::FftPlanner::<f32>::new();
     let fft = planner.plan_fft_inverse(notes);
-    let buf = vec![CZERO; notes].into_boxed_slice();
-    let ss = UnsafeCell::new(vec![NoteState::Silent; notes / 2 - 2].into_boxed_slice());
+    let window = vec![CZERO; fft.len()].into_boxed_slice();
+    let buf = vec![CZERO; fft.get_inplace_scratch_len()].into_boxed_slice();
+    let ss = UnsafeCell::new(vec![NoteState::Silent; fft.len() / 2 - 2].into_boxed_slice());
     let control = Arc::new(WavesControl {
       ss,
       sustain: AtomicBool::new(false),
+      mode: UnsafeCell::new(NoteMode::Sine),
       adsr: AdsrParams {
         attack_level: 0.4,
         sustain_level: 0.3,
@@ -162,7 +204,7 @@ impl Waves {
     });
     Self {
       fft,
-      window: buf.clone(),
+      window,
       buf,
       wp: 0,
       control,
@@ -170,9 +212,10 @@ impl Waves {
   }
   pub fn shallow_clone(&self) -> Self {
     let buf = vec![CZERO; self.buf.len()].into_boxed_slice();
+    let window = vec![CZERO; self.window.len()].into_boxed_slice();
     Self {
       fft: Arc::clone(&self.fft),
-      window: buf.clone(),
+      window,
       buf,
       wp: 0,
       control: self.control(),
@@ -183,21 +226,31 @@ impl Waves {
   }
 }
 
-
 impl Waves {
   pub fn peek(&mut self) -> Option<f32> {
-    if self.wp == self.window.len() {
+    Some(self.calc(false))
+  }
+  pub fn calc(&mut self, progress: bool) -> f32 {
+    let n = self.window.len();
+    let hn = n / 2;
+    if self.wp == n {
       let ss = unsafe { &mut *self.control.ss.get() };
-      let n = self.buf.len();
+      let sustain = self.control.sustain.load(Ordering::Relaxed);
+      let mode = unsafe { *self.control.mode.get() };
+      let dt = 1.0 / 16.0;
       self.window.fill(CZERO);
       let mut fsum = 0.0;
       for (i, b) in ss.iter_mut().enumerate() {
-        let s = b.peek(&self.control.adsr);
-        let s = s / (i as f32 + 1.0) * 5.0;
+        let s = if progress {
+          b.next(&self.control.adsr, dt, sustain)
+        } else {
+          b.peek(&self.control.adsr)
+        };
+        // let s = s / (i as f32 + 1.0) * 5.0;
+
         fsum += s;
         let v = Complex::new(0f32, s);
-        self.window[i + 1] = -v;
-        self.window[n - i - 1] = v;
+        mode.calc(i, n, hn, v, &mut self.window);
       }
       if fsum > 1.0 {
         for i in 1..n / 2 {
@@ -205,13 +258,15 @@ impl Waves {
           self.window[n - i - 1] /= fsum;
         }
       }
-      self.fft.process_with_scratch(&mut self.window, &mut self.buf);
+      self
+        .fft
+        .process_with_scratch(&mut self.window, &mut self.buf);
 
       self.wp = 0;
     }
     let v = self.window[self.wp].re;
     self.wp += 1;
-    Some(v)
+    v
   }
 }
 
@@ -219,34 +274,7 @@ impl Iterator for Waves {
   type Item = f32;
 
   fn next(&mut self) -> Option<Self::Item> {
-    if self.wp == self.window.len() {
-      let ss = unsafe { &mut *self.control.ss.get() };
-      let dt = 1.0 / 16.0;
-      let sustain = self.control.sustain.load(Ordering::Relaxed);
-      let n = self.buf.len();
-      self.window.fill(CZERO);
-      let mut fsum = 0.0;
-      for (i, b) in ss.iter_mut().enumerate() {
-        let s = b.next(&self.control.adsr, dt, sustain);
-        let s = s / (i as f32 + 1.0) * 5.0;
-        fsum += s;
-        let v = Complex::new(0f32, s);
-        self.window[i + 1] = -v;
-        self.window[n - i - 1] = v;
-      }
-      if fsum > 1.0 {
-        for i in 1..n / 2 {
-          self.window[i + 1] /= fsum;
-          self.window[n - i - 1] /= fsum;
-        }
-      }
-      self.fft.process_with_scratch(&mut self.window, &mut self.buf);
-
-      self.wp = 0;
-    }
-    let v = self.window[self.wp].re;
-    self.wp += 1;
-    Some(v)
+    Some(self.calc(true))
   }
 }
 impl Source for Waves {

@@ -1,4 +1,7 @@
-use plotters::{prelude::*, style::{WHITE, IntoFont}};
+use plotters::{
+  prelude::*,
+  style::{IntoFont, WHITE},
+};
 use rodio::{OutputStream, Sink};
 
 use crate::waves::Waves;
@@ -6,11 +9,13 @@ use crate::windows::WindowBackend;
 
 // pub mod fft;
 pub mod lerp;
+pub mod ui;
 pub mod waves;
 pub mod windows;
 
 fn main() {
-  const LEN: usize = 44100;
+  const LEN: usize = 44100 / 16;
+  // const LEN: usize = 128;
   let mut waves = Waves::new(LEN);
   const SIZE: (u32, u32) = (1920, 1080);
   let backend = WindowBackend::new(SIZE, waves.control());
@@ -28,6 +33,7 @@ fn main() {
 
   let mut buf = [0f32; LEN];
   let mut freq = [0f32; LEN / 2 - 2];
+  // let box_style = ShapeStyle{ color: RED.into(), filled: false, stroke_width: 2 };
   loop {
     if !updater.update() {
       return;
@@ -35,6 +41,8 @@ fn main() {
     buf.fill_with(|| waves.peek().unwrap());
     control.get_state(&mut freq);
     root.fill(&WHITE).unwrap();
+    // let mouse = updater.1.mouse;
+    // root.draw(&RoundedRect::new([(5, 5), (mouse.x, mouse.y)], 50, box_style)).unwrap();
     let mut chart = ChartBuilder::on(&root)
       .x_label_area_size(35)
       .y_label_area_size(40)
