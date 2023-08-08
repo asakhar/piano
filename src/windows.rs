@@ -63,7 +63,7 @@ impl WindowBackend {
 impl std::error::Error for DrawingError {}
 
 impl WindowBackend {
-  pub fn into_backend(&self) -> (WindowUpdater, BitMapBackend<BGRXPixel>) {
+  pub fn into_backend<'a>(&mut self) -> (WindowUpdater, BitMapBackend<BGRXPixel>) {
     let inner = unsafe { &mut *self.0.get() };
     let size = inner.size;
     (
@@ -149,7 +149,6 @@ impl WindowUpdater {
         inner.msg.lParam as usize,
       ) {
         self.1.mouse = event;
-        println!("mouse={event:?}");
       }
     }
   }

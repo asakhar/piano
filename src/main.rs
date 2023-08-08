@@ -21,7 +21,7 @@ fn main() {
   // const LEN: usize = 128;
   let mut waves = Waves::new(LEN);
   const SIZE: (u32, u32) = (1920, 1080);
-  let backend = WindowBackend::new(SIZE, waves.control());
+  let mut backend = WindowBackend::new(SIZE, waves.control());
   let control = waves.control();
   let (_stream, stream_handle) = OutputStream::try_default().unwrap();
   let sink = Sink::try_new(&stream_handle).unwrap();
