@@ -24,8 +24,8 @@ use winapi::{
       PeekMessageW, PostQuitMessage, RegisterClassExW, ReleaseDC, ShowWindow, CS_DBLCLKS,
       CS_HREDRAW, CS_VREDRAW, IDC_ARROW, MK_CONTROL, MK_LBUTTON, MK_MBUTTON, MK_RBUTTON, MK_SHIFT,
       MK_XBUTTON1, MK_XBUTTON2, MSG, PM_REMOVE, SW_SHOWMAXIMIZED, VK_OEM_1, VK_OEM_4, VK_OEM_5,
-      VK_OEM_6, VK_OEM_7, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSEXW,
-      WS_OVERLAPPEDWINDOW, WM_MOUSELAST, WM_MOUSEFIRST,
+      VK_OEM_6, VK_OEM_7, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_MOUSEFIRST, WM_MOUSELAST, WM_QUIT,
+      WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
     },
   },
 };
@@ -67,7 +67,12 @@ impl WindowBackend {
     let inner = unsafe { &mut *self.0.get() };
     let size = inner.size;
     (
-      WindowUpdater(Self(Arc::clone(&self.0)), WindowState { mouse: Default::default() }),
+      WindowUpdater(
+        Self(Arc::clone(&self.0)),
+        WindowState {
+          mouse: Default::default(),
+        },
+      ),
       BitMapBackend::with_buffer_and_format(inner.bm_buffer.as_mut_slice(), size).unwrap(),
     )
   }
@@ -124,23 +129,25 @@ impl WindowUpdater {
           b' ' => {
             inner.control.sustain.store(pressed, Ordering::Relaxed);
           }
-          b'1' | b'2' | b'3' | b'4' => {
-            if pressed {
-              let mode = match code {
-                b'1' => NoteMode::Sine,
-                b'2' => NoteMode::Saw,
-                b'3' => NoteMode::Square,
-                b'4' => NoteMode::Triangle,
-                _ => unreachable!(),
-              };
-              unsafe { *inner.control.mode.get() = mode };
-            }
+          b'1' | b'2' | b'3' | b'4' if pressed => {
+            let mode = match code {
+              b'1' => NoteMode::Sine,
+              b'2' => NoteMode::Saw,
+              b'3' => NoteMode::Square,
+              b'4' => NoteMode::Triangle,
+              _ => unreachable!(),
+            };
+            unsafe { *inner.control.mode.get() = mode };
           }
           _ => (),
         }
         continue;
       }
-      if let Some(event) = process_mouse(inner.msg.message, inner.msg.wParam, inner.msg.lParam as usize) {
+      if let Some(event) = process_mouse(
+        inner.msg.message,
+        inner.msg.wParam,
+        inner.msg.lParam as usize,
+      ) {
         self.1.mouse = event;
         println!("mouse={event:?}");
       }
